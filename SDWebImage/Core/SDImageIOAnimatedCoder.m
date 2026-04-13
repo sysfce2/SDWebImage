@@ -313,10 +313,19 @@ static BOOL SDImageIOPNGPluginBuggyNeedWorkaround(void) {
 
 - (void)didReceiveMemoryWarning:(NSNotification *)notification
 {
+    // Incremental decoding may concurrently read/write _imageSource from the
+    // frame fetch queue and updateIncrementalData:; hold the same lock to
+    // prevent races with CGImageSourceRemoveCacheAtIndex.
+    if (_incremental) {
+        SD_LOCK(_lock);
+    }
     if (_imageSource) {
         for (size_t i = 0; i < _frameCount; i++) {
             CGImageSourceRemoveCacheAtIndex(_imageSource, i);
         }
+    }
+    if (_incremental) {
+        SD_UNLOCK(_lock);
     }
 }
 
