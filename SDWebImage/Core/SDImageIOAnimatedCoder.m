@@ -786,10 +786,14 @@ static BOOL SDImageIOPNGPluginBuggyNeedWorkaround(void) {
     
     // The following code is from http://www.cocoaintheshell.com/2011/05/progressive-images-download-imageio/
     // Thanks to the author @Nyx0uf
-    
+
+    // Lock before updating the image source to prevent concurrent access from the frame fetch queue.
+    // CGImageSource is not thread-safe for simultaneous read+write.
+    SD_LOCK(_lock);
+
     // Update the data source, we must pass ALL the data, not just the new bytes
     CGImageSourceUpdateData(_imageSource, (__bridge CFDataRef)data, finished);
-    
+
     if (_width + _height == 0) {
         CFDictionaryRef properties = CGImageSourceCopyPropertiesAtIndex(_imageSource, 0, NULL);
         if (properties) {
@@ -800,12 +804,10 @@ static BOOL SDImageIOPNGPluginBuggyNeedWorkaround(void) {
             CFRelease(properties);
         }
     }
-    
-    SD_LOCK(_lock);
+
     // For animated image progressive decoding because the frame count and duration may be changed.
     [self scanAndCheckFramesValidWithImageSource:_imageSource];
-    SD_UNLOCK(_lock);
-    
+
     // Scale down to limit bytes if need
     if (_limitBytes > 0) {
         // Hack since ImageIO public API (not CGImageDecompressor/CMPhoto) always return back RGBA8888 CGImage
@@ -815,6 +817,8 @@ static BOOL SDImageIOPNGPluginBuggyNeedWorkaround(void) {
         _thumbnailSize = framePixelSize;
         _preserveAspectRatio = YES;
     }
+
+    SD_UNLOCK(_lock);
 }
 
 - (UIImage *)incrementalDecodedImageWithOptions:(SDImageCoderOptions *)options {
@@ -828,7 +832,9 @@ static BOOL SDImageIOPNGPluginBuggyNeedWorkaround(void) {
         if (scaleFactor != nil) {
             scale = MAX([scaleFactor doubleValue], 1);
         }
+        SD_LOCK(_lock);
         image = [self.class createFrameAtIndex:0 source:_imageSource scale:scale preserveAspectRatio:_preserveAspectRatio thumbnailSize:_thumbnailSize lazyDecode:_lazyDecode animatedImage:NO decodeToHDR:_finished ? _decodeToHDR : NO];
+        SD_UNLOCK(_lock);
         if (image) {
             image.sd_imageFormat = self.class.imageFormat;
         }
