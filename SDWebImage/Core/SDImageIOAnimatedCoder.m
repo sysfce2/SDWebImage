@@ -781,15 +781,16 @@ static BOOL SDImageIOPNGPluginBuggyNeedWorkaround(void) {
     if (_finished) {
         return;
     }
-    _imageData = data;
-    _finished = finished;
-    
     // The following code is from http://www.cocoaintheshell.com/2011/05/progressive-images-download-imageio/
     // Thanks to the author @Nyx0uf
 
-    // Lock before updating the image source to prevent concurrent access from the frame fetch queue.
+    // Lock before updating state and the image source to prevent concurrent access from the frame fetch queue.
     // CGImageSource is not thread-safe for simultaneous read+write.
+    // _imageData and _finished must be set inside the lock so readers cannot observe
+    // _finished == YES while _imageSource still has old data.
     SD_LOCK(_lock);
+    _imageData = data;
+    _finished = finished;
 
     // Update the data source, we must pass ALL the data, not just the new bytes
     CGImageSourceUpdateData(_imageSource, (__bridge CFDataRef)data, finished);
